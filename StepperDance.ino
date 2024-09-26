@@ -40,6 +40,7 @@ volatile boolean RotationDetected = false;
 volatile int EncoderClicks = 0;
 unsigned long ThisClick = 0;
 unsigned long ClickInterval = 0;
+volatile long currentYPosition = 0;
 boolean IS_MOVING = false;
 boolean MOVE_SENT = false;
 PrinterMode currentMode = IDLE;
@@ -97,10 +98,10 @@ void loop() {
     IS_MOVING = true;
     ThisClick = millis();
    
-    Serial.print("EncoderClicks: ");
-    Serial.println(EncoderClicks);
-    Serial.print("clicksSinceEdge: ");
-    Serial.println(clicksSinceEdge);
+    //Serial.print("EncoderClicks: ");
+    //Serial.println(EncoderClicks);
+    //Serial.print("clicksSinceEdge: ");
+    //Serial.println(clicksSinceEdge);
     //Serial.print("MOVE_SENT: ");
     //Serial.println(MOVE_SENT);
     //Serial.print("IS_MOVING: ");
@@ -125,7 +126,7 @@ void loop() {
     if(clicksSinceEdge >= clicksPerPaper){
       closePaperFeedSensor();
     }
-    //This logic may not be needed. It would only be hlepful if the paper moves back an forth across the sensor.
+    //This logic may not be needed. It would only be helpful if the paper moves back an forth across the sensor.
     /*if(clicksSinceEdge << SMALL_ROLL_INS_THRESHOLD){ 
       closePaperFeedSensor();
       SEEKING_PAPER_FEED = false;
@@ -147,9 +148,9 @@ void loop() {
       Serial.println("Initializing for new page");
       closePaperFeedSensor();
       SEEKING_PAPER_FEED = true;
-      Serial.println("Awaiting new page, homing Y-axis...");
-      homeYAxis();
-      Serial.println("Y-axis homing completed for new page.");
+      Serial.println("Awaiting new page, resetting Y-axis...");
+      moveYAxis(-currentYPosition);
+      Serial.println("Y-axis reset for new page.");
     }
   }
 }
@@ -205,41 +206,40 @@ void EncoderRotated() {
 
 void homeYAxis() {
   Serial.println("Starting Y-axis homing...");
-  digitalWrite(dirPin, HIGH);  // Towards home
- 
+  
+  // Move towards home until the limit switch is triggered
   while (digitalRead(limitSwitchPin) == LOW) {
-    digitalWrite(stepPin, HIGH);
-    delayMicroseconds(HOMING_SPEED / 2);
-    digitalWrite(stepPin, LOW);
-    delayMicroseconds(HOMING_SPEED / 2);
-   
-    if (digitalRead(limitSwitchPin) == HIGH) {
-      break;  // Exit the loop immediately if switch is triggered
-    }
+    moveYAxis(-1);  // Move one step at a time towards home
   }
- 
-  digitalWrite(stepPin, LOW);
+  
   Serial.println("Limit switch triggered!");
- 
+  
   delay(HOMING_DIRECTION_CHANGE_DELAY);  // Short delay before changing direction
- 
-  digitalWrite(dirPin, LOW);  // Reverse direction
-  for (int i = 0; i < BACKOFF_STEPS; i++) {
-    digitalWrite(stepPin, HIGH);
-    delayMicroseconds(HOMING_SPEED * 2);
-    digitalWrite(stepPin, LOW);
-    delayMicroseconds(HOMING_SPEED * 2);
-  }
- 
+  
+  moveYAxis(BACKOFF_STEPS);  // Move back by BACKOFF_STEPS
+  
+  currentYPosition = 0;  // Reset Y position to zero after homing
   Serial.println("Homing complete!");
 }
 
 void moveYAxis(int steps) {
-  digitalWrite(dirPin, LOW);  // Assuming LOW moves away from home
+  if (steps > 0) {
+    digitalWrite(dirPin, LOW);  // Set direction for positive steps
+  } else if (steps < 0) {
+    digitalWrite(dirPin, HIGH);  // Set direction for negative steps
+    steps = -steps;  // Convert negative steps to positive value
+  } else {
+    return;  // If steps is zero, no movement is needed.
+  }
+  
   for (int i = 0; i < steps; i++) {
     digitalWrite(stepPin, HIGH);
     delayMicroseconds(HOMING_SPEED);
     digitalWrite(stepPin, LOW);
     delayMicroseconds(HOMING_SPEED);
   }
+  
+  currentYPosition += steps;  // Update current Y position
+  Serial.print("currentYPosition: ");
+  Serial.println(currentYPosition);
 }
